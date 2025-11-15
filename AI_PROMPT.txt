@@ -1,0 +1,56 @@
+I need help converting a Next.js prompt library app into a multi-user SaaS application for Liatrio employees.
+
+**Current State:**
+- ✅ Working Next.js 16 app with all features migrated from localStorage-based HTML
+- ✅ Repository: https://github.com/liatrio-labs/prompt-library-app
+- ✅ Client tested and approved the UI/UX
+- ✅ Currently running locally with ngrok at https://jg.ngrok.io
+- ✅ Full details in AI_HANDOFF.md in the repo
+
+**What I Need Next:**
+
+1. **Google OAuth Setup** (Phase 2)
+   - Integrate Supabase Auth with Google OAuth provider
+   - MUST restrict to @liatrio.com domain ONLY
+   - Protected routes - entire app behind auth
+   - Show user email/avatar, add logout
+
+2. **Supabase Database** (Phase 3)
+   - Multi-user prompt sharing system
+   - Users, prompts, prompt_history, and global_templates tables
+   - Row-level security policies
+   - **Default behavior: All prompts SHARED with Liatrio team**
+   - Option to make prompts PRIVATE
+   - UI toggle for public/private per prompt
+
+3. **Deploy to Vercel**
+   - Deploy under `liatrio-innovation` team (team_yvdjb71Onu70fAy7abppXZYA)
+   - Use Vercel MCP to manage deployment
+   - Set up environment variables for Supabase and Google OAuth
+
+**Key Requirements:**
+- ✅ Maintain ALL existing features (variables, templates, dark mode, etc.)
+- ✅ Restrict to @liatrio.com emails ONLY
+- ✅ Default to SHARED prompts (encourage collaboration)
+- ✅ Use Supabase for database
+- ✅ Deploy to Vercel
+
+**Setup Needed:**
+- Help me create Google OAuth credentials with domain restriction
+- Help me set up Supabase project (I'm new to Supabase)
+- Create database schema and RLS policies
+- Migrate components from localStorage to Supabase
+- Deploy to Vercel with proper env vars
+
+**Database Schema Needed:**
+- Users table (email, name, avatar)
+- Prompts table (with user_id, is_public flag)
+- Prompt_history table (version tracking)
+- Global_templates table (shared templates)
+
+**Tech Stack:**
+- Next.js 16 (App Router), TypeScript, Tailwind
+- Supabase Auth + Database
+- Vercel deployment
+
+Please start by helping me set up Supabase and Google OAuth, then we'll migrate the app to use the database and deploy to Vercel. See AI_HANDOFF.md for complete technical details and current data model.
