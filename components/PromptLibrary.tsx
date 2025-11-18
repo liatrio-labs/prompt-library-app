@@ -60,7 +60,11 @@ const DEFAULT_TEMPLATES: GlobalTemplates = {
 
 type View = 'home' | 'composer' | 'settings' | 'trash';
 
-export default function PromptLibrary() {
+type Props = {
+  userEmail?: string | null;
+};
+
+export default function PromptLibrary({ userEmail }: Props) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [currentView, setCurrentView] = useState<View>('home');
   const [currentPromptId, setCurrentPromptId] = useState<string | null>(null);
@@ -491,6 +495,10 @@ export default function PromptLibrary() {
   const variables = extractVariables(promptContent);
   const prefilledParts = extractPrefilledParts(promptContent);
   const globalKeys = extractGlobalKeys(promptContent);
+  const handleLogout = useCallback(async () => {
+    await fetch('/logout', { method: 'POST' });
+    window.location.href = '/login';
+  }, []);
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
@@ -687,6 +695,19 @@ export default function PromptLibrary() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex items-center justify-end gap-3 mb-4">
+          {userEmail && (
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              Signed in as <span className="font-semibold">{userEmail}</span>
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-200 underline"
+          >
+            Sign out
+          </button>
+        </div>
         {/* Home View */}
         {currentView === 'home' && (
           <div className="max-w-6xl mx-auto">
