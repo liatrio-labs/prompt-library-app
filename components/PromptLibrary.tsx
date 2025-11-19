@@ -45,6 +45,25 @@ export default function PromptLibrary({ userEmail }: Props) {
 
   const supabase = createSupabaseBrowserClient();
 
+  const mapPrompts = (data: any[]): Prompt[] =>
+    data.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      tags: p.tags || [],
+      category: p.category,
+      history: (p.prompt_history || []).map((h: any) => ({
+        content: h.content,
+        savedAt: h.saved_at,
+        versionName: h.version_name || ''
+      })),
+      createdAt: p.created_at,
+      updatedAt: p.updated_at,
+      trashed: p.trashed || false,
+      trashedAt: p.trashed_at || undefined,
+      isPublic: p.is_public,
+      userId: p.user_id
+    })) as Prompt[];
+
   // Load data from Supabase on mount
   useEffect(() => {
     const load = async () => {
@@ -58,28 +77,11 @@ export default function PromptLibrary({ userEmail }: Props) {
 
       const { data: promptData } = await supabase
         .from('prompts')
-        .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,prompt_history(content,saved_at,version_name)')
+        .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,prompt_history(content,saved_at,version_name)')
         .order('updated_at', { ascending: false });
 
       if (promptData) {
-        const mapped = promptData.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          tags: p.tags || [],
-          category: p.category,
-          history: (p.prompt_history || []).map((h: any) => ({
-            content: h.content,
-            savedAt: h.saved_at,
-            versionName: h.version_name || ''
-          })),
-          createdAt: p.created_at,
-          updatedAt: p.updated_at,
-          trashed: p.trashed || false,
-          trashedAt: p.trashed_at || undefined,
-          isPublic: p.is_public,
-          userId: p.user_id
-        })) as Prompt[];
-        setPrompts(mapped);
+        setPrompts(mapPrompts(promptData));
       }
 
       const { data: tmplData } = await supabase
@@ -143,28 +145,9 @@ export default function PromptLibrary({ userEmail }: Props) {
   const reloadPrompts = useCallback(async () => {
     const { data } = await supabase
       .from('prompts')
-      .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,prompt_history(content,saved_at,version_name)')
+      .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,prompt_history(content,saved_at,version_name)')
       .order('updated_at', { ascending: false });
-    if (data) {
-      const mapped = data.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        tags: p.tags || [],
-        category: p.category,
-        history: (p.prompt_history || []).map((h: any) => ({
-          content: h.content,
-          savedAt: h.saved_at,
-          versionName: h.version_name || ''
-        })),
-        createdAt: p.created_at,
-        updatedAt: p.updated_at,
-        trashed: p.trashed || false,
-        trashedAt: p.trashed_at || undefined,
-        isPublic: p.is_public,
-        userId: p.user_id
-      })) as Prompt[];
-      setPrompts(mapped);
-    }
+    if (data) setPrompts(mapPrompts(data));
   }, [supabase]);
 
   const resetForm = useCallback(() => {
