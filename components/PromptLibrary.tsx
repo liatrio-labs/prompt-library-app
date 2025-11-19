@@ -228,6 +228,9 @@ export default function PromptLibrary({ userEmail }: Props) {
             content: promptContent,
             version_name: ''
           });
+          // mark as editing the newly created prompt so subsequent saves update not duplicate
+          setCurrentPromptId(inserted.id);
+          setIsEditing(true);
         }
       }
       await reloadPrompts();
