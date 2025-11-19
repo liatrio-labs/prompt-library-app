@@ -42,6 +42,7 @@ export default function PromptLibrary({ userEmail }: Props) {
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const supabase = createSupabaseBrowserClient();
 
@@ -186,6 +187,7 @@ export default function PromptLibrary({ userEmail }: Props) {
   }, [prompts]);
 
   const savePrompt = useCallback(() => {
+    if (saving) return;
     if (!promptName.trim() || !promptContent.trim()) {
       showToast('Please provide both a name and content for the prompt', 'error');
       return;
@@ -198,46 +200,65 @@ export default function PromptLibrary({ userEmail }: Props) {
       showToast('User not loaded', 'error');
       return;
     }
-
     const tags = promptTags.split(',').map(tag => tag.trim()).filter(tag => tag);
     const persist = async () => {
-      if (isEditing && currentPromptId) {
-        await supabase.from('prompts').update({
-          name: promptName,
-          tags,
-          category: promptCategory,
-          is_public: shareWithTeam,
-          trashed: false
-        }).eq('id', currentPromptId);
-        await supabase.from('prompt_history').insert({
-          prompt_id: currentPromptId,
-          content: promptContent,
-          version_name: ''
-        });
-      } else {
-        const { data: inserted, error } = await supabase.from('prompts').insert({
-          name: promptName,
-          tags,
-          category: promptCategory,
-          is_public: shareWithTeam,
-          user_id: userId
-        }).select('id').single();
-        if (!error && inserted?.id) {
-          await supabase.from('prompt_history').insert({
-            prompt_id: inserted.id,
+      setSaving(true);
+      try {
+        if (isEditing && currentPromptId) {
+          const { error } = await supabase.from('prompts').update({
+            name: promptName,
+            tags,
+            category: promptCategory,
+            is_public: shareWithTeam,
+            trashed: false
+          }).eq('id', currentPromptId);
+          if (error) {
+            showToast(error.message, 'error');
+            return;
+          }
+          const { error: histErr } = await supabase.from('prompt_history').insert({
+            prompt_id: currentPromptId,
             content: promptContent,
             version_name: ''
           });
-          // mark as editing the newly created prompt so subsequent saves update not duplicate
-          setCurrentPromptId(inserted.id);
-          setIsEditing(true);
+          if (histErr) {
+            showToast(histErr.message, 'error');
+            return;
+          }
+        } else {
+          const { data: inserted, error } = await supabase.from('prompts').insert({
+            name: promptName,
+            tags,
+            category: promptCategory,
+            is_public: shareWithTeam,
+            user_id: userId
+          }).select('id').single();
+          if (error) {
+            showToast(error.message, 'error');
+            return;
+          }
+          if (inserted?.id) {
+            const { error: histErr } = await supabase.from('prompt_history').insert({
+              prompt_id: inserted.id,
+              content: promptContent,
+              version_name: ''
+            });
+            if (histErr) {
+              showToast(histErr.message, 'error');
+              return;
+            }
+            setCurrentPromptId(inserted.id);
+            setIsEditing(true);
+          }
         }
+        await reloadPrompts();
+        showToast(`Prompt "${promptName}" ${isEditing ? 'updated' : 'created'} successfully`);
+      } finally {
+        setSaving(false);
       }
-      await reloadPrompts();
-      showToast(`Prompt "${promptName}" ${isEditing ? 'updated' : 'created'} successfully`);
     };
     persist();
-  }, [promptName, promptContent, promptCategory, promptTags, isEditing, currentPromptId, shareWithTeam, supabase, reloadPrompts, showToast, userId]);
+  }, [promptName, promptContent, promptCategory, promptTags, isEditing, currentPromptId, shareWithTeam, supabase, reloadPrompts, showToast, userId, saving]);
 
   const duplicatePrompt = useCallback((id: string) => {
     const original = prompts.find(p => p.id === id);
