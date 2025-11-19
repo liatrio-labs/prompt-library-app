@@ -46,6 +46,14 @@ export default function PromptLibrary({ userEmail }: Props) {
 
   const supabase = createSupabaseBrowserClient();
 
+  const emailToName = (email: string) => {
+    const local = email.split('@')[0];
+    return local
+      .split('.')
+      .map((s) => (s ? s[0].toUpperCase() + s.slice(1) : s))
+      .join(' ');
+  };
+
   const mapPrompts = (data: any[]): Prompt[] =>
     data.map((p: any) => ({
       id: p.id,
@@ -66,14 +74,6 @@ export default function PromptLibrary({ userEmail }: Props) {
       authorEmail: p.users?.email || null,
       authorName: p.users?.email ? emailToName(p.users.email) : null
     })) as Prompt[];
-
-  const emailToName = (email: string) => {
-    const local = email.split('@')[0];
-    return local
-      .split('.')
-      .map((s) => (s ? s[0].toUpperCase() + s.slice(1) : s))
-      .join(' ');
-  };
 
   // Load data from Supabase on mount
   useEffect(() => {
@@ -96,7 +96,7 @@ export default function PromptLibrary({ userEmail }: Props) {
 
       const { data: promptData } = await supabase
         .from('prompts')
-        .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,users(email),prompt_history(content,saved_at,version_name)')
+        .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,users:users(email),prompt_history(content,saved_at,version_name)')
         .order('updated_at', { ascending: false });
 
       if (promptData) {
@@ -164,7 +164,7 @@ export default function PromptLibrary({ userEmail }: Props) {
   const reloadPrompts = useCallback(async () => {
     const { data } = await supabase
       .from('prompts')
-      .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,users(email),prompt_history(content,saved_at,version_name)')
+      .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,users:users(email),prompt_history(content,saved_at,version_name)')
       .order('updated_at', { ascending: false });
     if (data) setPrompts(mapPrompts(data));
   }, [supabase]);
@@ -195,6 +195,19 @@ export default function PromptLibrary({ userEmail }: Props) {
     setShareWithTeam(prompt.isPublic !== false);
     setCurrentView('composer');
   }, [prompts]);
+
+  const ensureOwner = useCallback((id: string, action: string) => {
+    const prompt = prompts.find(p => p.id === id);
+    if (!prompt) {
+      showToast('Prompt not found', 'error');
+      return null;
+    }
+    if (prompt.userId !== userId) {
+      showToast(`Only the author can ${action} this prompt`, 'error');
+      return null;
+    }
+    return prompt;
+  }, [prompts, showToast, userId]);
 
   const savePrompt = useCallback(() => {
     if (saving) return;
@@ -315,6 +328,7 @@ export default function PromptLibrary({ userEmail }: Props) {
   }, [prompts, supabase, reloadPrompts, showToast, userId]);
 
   const trashPrompt = useCallback((id: string) => {
+    if (!ensureOwner(id, 'delete')) return;
     const run = async () => {
       await supabase.from('prompts').update({
         trashed: true,
@@ -325,9 +339,10 @@ export default function PromptLibrary({ userEmail }: Props) {
       showToast('Prompt moved to trash');
     };
     run();
-  }, [supabase, reloadPrompts, resetForm, showToast]);
+  }, [ensureOwner, supabase, reloadPrompts, resetForm, showToast]);
 
   const recoverPrompt = useCallback((id: string) => {
+    if (!ensureOwner(id, 'recover')) return;
     const run = async () => {
       await supabase.from('prompts').update({
         trashed: false,
@@ -337,16 +352,17 @@ export default function PromptLibrary({ userEmail }: Props) {
       showToast('Prompt recovered');
     };
     run();
-  }, [supabase, reloadPrompts, showToast]);
+  }, [ensureOwner, supabase, reloadPrompts, showToast]);
 
   const permanentlyDeletePrompt = useCallback((id: string) => {
+    if (!ensureOwner(id, 'delete')) return;
     const run = async () => {
       await supabase.from('prompts').delete().eq('id', id);
       await reloadPrompts();
       showToast('Prompt permanently deleted');
     };
     run();
-  }, [supabase, reloadPrompts, showToast]);
+  }, [ensureOwner, supabase, reloadPrompts, showToast]);
 
   const addGlobalTemplate = useCallback(() => {
     if (!newTemplateKey.trim() || !newTemplateValue.trim()) {
@@ -625,7 +641,9 @@ export default function PromptLibrary({ userEmail }: Props) {
               {searchTerm ? 'No matching prompts found' : (currentView === 'trash' ? 'Trash is empty' : 'No prompts yet')}
             </div>
           ) : (
-            filteredPrompts.map(prompt => (
+            filteredPrompts.map(prompt => {
+              const isOwner = prompt.userId === userId;
+              return (
               <div
                 key={prompt.id}
                 className={`bg-white dark:bg-gray-700 rounded-lg shadow p-3 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900 transition-colors border ${currentPromptId === prompt.id ? 'border-blue-400' : 'border-transparent'}`}
@@ -659,43 +677,52 @@ export default function PromptLibrary({ userEmail }: Props) {
                       >
                         <i className="fas fa-copy"></i> Duplicate
                       </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          trashPrompt(prompt.id);
-                        }}
-                        className="text-red-600 hover:text-red-800 text-xs"
-                      >
-                        <i className="fas fa-trash"></i> Delete
-                      </button>
+                      {isOwner && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            trashPrompt(prompt.id);
+                          }}
+                          className="text-red-600 hover:text-red-800 text-xs"
+                        >
+                          <i className="fas fa-trash"></i> Delete
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          recoverPrompt(prompt.id);
-                        }}
-                        className="text-green-600 hover:text-green-800 text-xs"
-                      >
-                        <i className="fas fa-undo"></i> Recover
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (confirm('Are you sure you want to permanently delete this prompt?')) {
-                            permanentlyDeletePrompt(prompt.id);
-                          }
-                        }}
-                        className="text-red-600 hover:text-red-800 text-xs"
-                      >
-                        <i className="fas fa-times"></i> Delete Permanently
-                      </button>
+                      {isOwner ? (
+                        <>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              recoverPrompt(prompt.id);
+                            }}
+                            className="text-green-600 hover:text-green-800 text-xs"
+                          >
+                            <i className="fas fa-undo"></i> Recover
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm('Are you sure you want to permanently delete this prompt?')) {
+                                permanentlyDeletePrompt(prompt.id);
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-800 text-xs"
+                          >
+                            <i className="fas fa-times"></i> Delete Permanently
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Read-only</span>
+                      )}
                     </>
                   )}
                 </div>
               </div>
-            ))
+            );
+            })
           )}
         </div>
       </div>
