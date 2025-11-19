@@ -62,8 +62,18 @@ export default function PromptLibrary({ userEmail }: Props) {
       trashed: p.trashed || false,
       trashedAt: p.trashed_at || undefined,
       isPublic: p.is_public,
-      userId: p.user_id
+      userId: p.user_id,
+      authorEmail: p.users?.email || null,
+      authorName: p.users?.email ? emailToName(p.users.email) : null
     })) as Prompt[];
+
+  const emailToName = (email: string) => {
+    const local = email.split('@')[0];
+    return local
+      .split('.')
+      .map((s) => (s ? s[0].toUpperCase() + s.slice(1) : s))
+      .join(' ');
+  };
 
   // Load data from Supabase on mount
   useEffect(() => {
@@ -86,7 +96,7 @@ export default function PromptLibrary({ userEmail }: Props) {
 
       const { data: promptData } = await supabase
         .from('prompts')
-        .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,prompt_history(content,saved_at,version_name)')
+        .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,users(email),prompt_history(content,saved_at,version_name)')
         .order('updated_at', { ascending: false });
 
       if (promptData) {
@@ -154,7 +164,7 @@ export default function PromptLibrary({ userEmail }: Props) {
   const reloadPrompts = useCallback(async () => {
     const { data } = await supabase
       .from('prompts')
-      .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,prompt_history(content,saved_at,version_name)')
+      .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,users(email),prompt_history(content,saved_at,version_name)')
       .order('updated_at', { ascending: false });
     if (data) setPrompts(mapPrompts(data));
   }, [supabase]);
@@ -626,6 +636,9 @@ export default function PromptLibrary({ userEmail }: Props) {
                   <span className={`px-2 py-0.5 rounded-full ${prompt.isPublic === false ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200' : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'}`}>
                     {prompt.isPublic === false ? 'Private' : 'Shared'}
                   </span>
+                  {prompt.authorName && (
+                    <span className="text-gray-500 dark:text-gray-300">by {prompt.authorName}</span>
+                  )}
                 </div>
                 {prompt.tags && prompt.tags.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
