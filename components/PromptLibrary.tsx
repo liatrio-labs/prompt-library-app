@@ -34,7 +34,7 @@ export default function PromptLibrary({ userEmail }: Props) {
   const [globalTemplates, setGlobalTemplates] = useState<GlobalTemplates>({});
   const [newTemplateKey, setNewTemplateKey] = useState('');
   const [newTemplateValue, setNewTemplateValue] = useState('');
-  const [shareWithTeam, setShareWithTeam] = useState(true);
+  const [shareWithTeam, setShareWithTeam] = useState(false);
 
   // Theme
   const [theme, setTheme] = useState<Theme>('system');
@@ -169,7 +169,7 @@ export default function PromptLibrary({ userEmail }: Props) {
     setVariableInputs({});
     setPrefilledStates({});
     setGlobalTemplateStates({});
-    setShareWithTeam(true);
+    setShareWithTeam(false);
   }, []);
 
   const loadPromptForEditing = useCallback((id: string) => {
