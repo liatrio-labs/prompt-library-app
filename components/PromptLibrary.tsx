@@ -75,6 +75,14 @@ export default function PromptLibrary({ userEmail }: Props) {
       }
       setUserId(userData.user.id);
 
+       // Ensure user row exists for FK constraints
+      await supabase.from('users').upsert({
+        id: userData.user.id,
+        email: userData.user.email || '',
+        name: (userData.user.user_metadata as any)?.full_name || null,
+        avatar_url: (userData.user.user_metadata as any)?.avatar_url || null
+      }, { onConflict: 'id' });
+
       const { data: promptData } = await supabase
         .from('prompts')
         .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,user_id,prompt_history(content,saved_at,version_name)')
