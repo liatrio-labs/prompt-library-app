@@ -818,20 +818,19 @@ export default function PromptLibrary({ userEmail }: Props) {
               </div>
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Share with Liatrio team</p>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Share with Liatrio</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Default is shared; turn off to keep private.</p>
                 </div>
-                <label className="inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={shareWithTeam}
-                    onChange={(e) => setShareWithTeam(e.target.checked)}
+                <button
+                  type="button"
+                  aria-pressed={shareWithTeam}
+                  onClick={() => setShareWithTeam((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${shareWithTeam ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'}`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${shareWithTeam ? 'translate-x-5' : 'translate-x-1'}`}
                   />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 relative transition">
-                    <span className="absolute top-[2px] left-[2px] peer-checked:translate-x-5 w-5 h-5 bg-white rounded-full shadow transform transition"></span>
-                  </div>
-                </label>
+                </button>
               </div>
 
               <div className="mb-4">
