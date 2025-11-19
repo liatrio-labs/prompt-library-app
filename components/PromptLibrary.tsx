@@ -2,61 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Prompt, GlobalTemplates, Theme } from '@/types/prompt';
-
-const SAMPLE_PROMPTS: Prompt[] = [
-  {
-    id: '1',
-    name: 'Content Writer Assistant',
-    history: [
-      {
-        content: 'Act as a professional content writer. Write a ${type} about ${topic} in a ${tone} tone. Keep it ${length} and include [key points] and [call to action].',
-        savedAt: '2023-01-01T00:00:00Z',
-        versionName: ''
-      }
-    ],
-    tags: ['writing', 'content', 'assistant'],
-    category: 'Writing',
-    createdAt: '2023-01-01T00:00:00Z',
-    updatedAt: '2023-01-01T00:00:00Z',
-    trashed: false
-  },
-  {
-    id: '2',
-    name: 'SEO Meta Description',
-    history: [
-      {
-        content: 'Write an SEO-optimized meta description for a page about ${product} targeting the keywords "${keywords}". Keep it under ${length} characters and include [brand name] and [unique value proposition].\n\n<<ask-five>>',
-        savedAt: '2023-01-02T00:00:00Z',
-        versionName: ''
-      }
-    ],
-    tags: ['seo', 'marketing', 'content'],
-    category: 'Marketing',
-    createdAt: '2023-01-02T00:00:00Z',
-    updatedAt: '2023-01-02T00:00:00Z',
-    trashed: false
-  },
-  {
-    id: '3',
-    name: 'Code Debugging Helper',
-    history: [
-      {
-        content: 'I\'m getting ${error} in my ${language} code. The code is supposed to ${function}. Here\'s the relevant part: \n\n[problematic code]\n\nPlease analyze and suggest fixes, considering [best practices] for this language.',
-        savedAt: '2023-01-03T00:00:00Z',
-        versionName: ''
-      }
-    ],
-    tags: ['programming', 'debugging', 'technical'],
-    category: 'Programming',
-    createdAt: '2023-01-03T00:00:00Z',
-    updatedAt: '2023-01-03T00:00:00Z',
-    trashed: false
-  }
-];
-
-const DEFAULT_TEMPLATES: GlobalTemplates = {
-  "ask-five": "Before you reply, ask me five questions that will improve your answer."
-};
+import { createSupabaseBrowserClient } from '@/utils/supabase/client';
 
 type View = 'home' | 'composer' | 'settings' | 'trash';
 
@@ -66,6 +12,7 @@ type Props = {
 
 export default function PromptLibrary({ userEmail }: Props) {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<View>('home');
   const [currentPromptId, setCurrentPromptId] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -87,37 +34,73 @@ export default function PromptLibrary({ userEmail }: Props) {
   const [globalTemplates, setGlobalTemplates] = useState<GlobalTemplates>({});
   const [newTemplateKey, setNewTemplateKey] = useState('');
   const [newTemplateValue, setNewTemplateValue] = useState('');
+  const [shareWithTeam, setShareWithTeam] = useState(true);
 
   // Theme
   const [theme, setTheme] = useState<Theme>('system');
 
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Load data from localStorage on mount
+  const supabase = createSupabaseBrowserClient();
+
+  // Load data from Supabase on mount
   useEffect(() => {
-    const storedPrompts = localStorage.getItem('prompts');
-    const storedTemplates = localStorage.getItem('globalTemplates');
-    const storedTheme = localStorage.getItem('theme') as Theme;
+    const load = async () => {
+      setLoading(true);
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) {
+        setLoading(false);
+        return;
+      }
+      setUserId(userData.user.id);
 
-    if (storedPrompts) {
-      setPrompts(JSON.parse(storedPrompts));
-    } else {
-      setPrompts(SAMPLE_PROMPTS);
-      localStorage.setItem('prompts', JSON.stringify(SAMPLE_PROMPTS));
-    }
+      const { data: promptData } = await supabase
+        .from('prompts')
+        .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,prompt_history(content,saved_at,version_name)')
+        .order('updated_at', { ascending: false });
 
-    if (storedTemplates) {
-      setGlobalTemplates(JSON.parse(storedTemplates));
-    } else {
-      setGlobalTemplates(DEFAULT_TEMPLATES);
-      localStorage.setItem('globalTemplates', JSON.stringify(DEFAULT_TEMPLATES));
-    }
+      if (promptData) {
+        const mapped = promptData.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          tags: p.tags || [],
+          category: p.category,
+          history: (p.prompt_history || []).map((h: any) => ({
+            content: h.content,
+            savedAt: h.saved_at,
+            versionName: h.version_name || ''
+          })),
+          createdAt: p.created_at,
+          updatedAt: p.updated_at,
+          trashed: p.trashed || false,
+          trashedAt: p.trashed_at || undefined,
+          isPublic: p.is_public,
+          userId: p.user_id
+        })) as Prompt[];
+        setPrompts(mapped);
+      }
 
-    if (storedTheme) {
-      setTheme(storedTheme);
-    }
-  }, []);
+      const { data: tmplData } = await supabase
+        .from('global_templates')
+        .select('key,value')
+        .order('key');
+
+      if (tmplData) {
+        const map: GlobalTemplates = {};
+        tmplData.forEach((t: any) => {
+          map[t.key] = t.value;
+        });
+        setGlobalTemplates(map);
+      }
+
+      const storedTheme = localStorage.getItem('theme') as Theme;
+      if (storedTheme) setTheme(storedTheme);
+      setLoading(false);
+    };
+    load();
+  }, [supabase]);
 
   // Apply theme
   useEffect(() => {
@@ -138,24 +121,18 @@ export default function PromptLibrary({ userEmail }: Props) {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Purge old trash items (30 days)
+  // Purge old trash items (30 days) client-side view only
   useEffect(() => {
-    const purgeOldTrash = () => {
-      const now = new Date().getTime();
-      const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
-      const filtered = prompts.filter(prompt => {
-        if (prompt.trashed && prompt.trashedAt) {
-          const trashedTime = new Date(prompt.trashedAt).getTime();
-          return now - trashedTime < THIRTY_DAYS;
-        }
-        return true;
-      });
-      if (filtered.length !== prompts.length) {
-        setPrompts(filtered);
-        localStorage.setItem('prompts', JSON.stringify(filtered));
+    const now = new Date().getTime();
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+    const filtered = prompts.filter(prompt => {
+      if (prompt.trashed && prompt.trashedAt) {
+        const trashedTime = new Date(prompt.trashedAt).getTime();
+        return now - trashedTime < THIRTY_DAYS;
       }
-    };
-    purgeOldTrash();
+      return true;
+    });
+    if (filtered.length !== prompts.length) setPrompts(filtered);
   }, [prompts]);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
@@ -163,10 +140,32 @@ export default function PromptLibrary({ userEmail }: Props) {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  const savePrompts = useCallback((newPrompts: Prompt[]) => {
-    setPrompts(newPrompts);
-    localStorage.setItem('prompts', JSON.stringify(newPrompts));
-  }, []);
+  const reloadPrompts = useCallback(async () => {
+    const { data } = await supabase
+      .from('prompts')
+      .select('id,name,tags,category,is_public,trashed,trashed_at,created_at,updated_at,prompt_history(content,saved_at,version_name)')
+      .order('updated_at', { ascending: false });
+    if (data) {
+      const mapped = data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        tags: p.tags || [],
+        category: p.category,
+        history: (p.prompt_history || []).map((h: any) => ({
+          content: h.content,
+          savedAt: h.saved_at,
+          versionName: h.version_name || ''
+        })),
+        createdAt: p.created_at,
+        updatedAt: p.updated_at,
+        trashed: p.trashed || false,
+        trashedAt: p.trashed_at || undefined,
+        isPublic: p.is_public,
+        userId: p.user_id
+      })) as Prompt[];
+      setPrompts(mapped);
+    }
+  }, [supabase]);
 
   const resetForm = useCallback(() => {
     setCurrentPromptId(null);
@@ -178,6 +177,7 @@ export default function PromptLibrary({ userEmail }: Props) {
     setVariableInputs({});
     setPrefilledStates({});
     setGlobalTemplateStates({});
+    setShareWithTeam(true);
   }, []);
 
   const loadPromptForEditing = useCallback((id: string) => {
@@ -190,6 +190,7 @@ export default function PromptLibrary({ userEmail }: Props) {
     setPromptTags(prompt.tags.join(', '));
     setPromptCategory(prompt.category || '');
     setPromptContent(prompt.history && prompt.history.length > 0 ? prompt.history[0].content : '');
+    setShareWithTeam(prompt.isPublic !== false);
     setCurrentView('composer');
   }, [prompts]);
 
@@ -202,50 +203,56 @@ export default function PromptLibrary({ userEmail }: Props) {
       showToast('Please provide a category for the prompt', 'error');
       return;
     }
-
-    const tags = promptTags.split(',').map(tag => tag.trim()).filter(tag => tag);
-    const newHistoryEntry = {
-      content: promptContent,
-      savedAt: new Date().toISOString(),
-      versionName: ''
-    };
-
-    let newPrompts: Prompt[];
-    if (isEditing && currentPromptId) {
-      const existingPrompt = prompts.find(p => p.id === currentPromptId);
-      const updatedPrompt: Prompt = {
-        id: currentPromptId,
-        name: promptName,
-        tags,
-        category: promptCategory,
-        createdAt: existingPrompt?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        trashed: false,
-        history: [newHistoryEntry]
-      };
-      newPrompts = prompts.map(p => p.id === currentPromptId ? updatedPrompt : p);
-    } else {
-      const newPrompt: Prompt = {
-        id: Date.now().toString(),
-        name: promptName,
-        tags,
-        category: promptCategory,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        trashed: false,
-        history: [newHistoryEntry]
-      };
-      newPrompts = [newPrompt, ...prompts];
+    if (!userId) {
+      showToast('User not loaded', 'error');
+      return;
     }
 
-    savePrompts(newPrompts);
-    showToast(`Prompt "${promptName}" ${isEditing ? 'updated' : 'created'} successfully`);
-  }, [promptName, promptContent, promptCategory, promptTags, isEditing, currentPromptId, prompts, savePrompts, showToast]);
+    const tags = promptTags.split(',').map(tag => tag.trim()).filter(tag => tag);
+    const persist = async () => {
+      if (isEditing && currentPromptId) {
+        await supabase.from('prompts').update({
+          name: promptName,
+          tags,
+          category: promptCategory,
+          is_public: shareWithTeam,
+          trashed: false
+        }).eq('id', currentPromptId);
+        await supabase.from('prompt_history').insert({
+          prompt_id: currentPromptId,
+          content: promptContent,
+          version_name: ''
+        });
+      } else {
+        const { data: inserted, error } = await supabase.from('prompts').insert({
+          name: promptName,
+          tags,
+          category: promptCategory,
+          is_public: shareWithTeam,
+          user_id: userId
+        }).select('id').single();
+        if (!error && inserted?.id) {
+          await supabase.from('prompt_history').insert({
+            prompt_id: inserted.id,
+            content: promptContent,
+            version_name: ''
+          });
+        }
+      }
+      await reloadPrompts();
+      showToast(`Prompt "${promptName}" ${isEditing ? 'updated' : 'created'} successfully`);
+    };
+    persist();
+  }, [promptName, promptContent, promptCategory, promptTags, isEditing, currentPromptId, shareWithTeam, supabase, reloadPrompts, showToast, userId]);
 
   const duplicatePrompt = useCallback((id: string) => {
     const original = prompts.find(p => p.id === id);
     if (!original) {
       showToast('Prompt not found', 'error');
+      return;
+    }
+    if (!userId) {
+      showToast('User not loaded', 'error');
       return;
     }
 
@@ -260,46 +267,61 @@ export default function PromptLibrary({ userEmail }: Props) {
     const newHistory = original.history ? JSON.parse(JSON.stringify(original.history)) :
       [{ content: original.content || '', savedAt: new Date().toISOString(), versionName: '' }];
 
-    const newPrompt: Prompt = {
-      ...original,
-      id: Date.now().toString(),
-      name: newName,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      trashed: false,
-      history: newHistory
+    const latestContent = newHistory[0]?.content || '';
+    const run = async () => {
+      const { data: inserted, error } = await supabase.from('prompts').insert({
+        name: newName,
+        tags: original.tags,
+        category: original.category,
+        is_public: original.isPublic !== false,
+        user_id: userId
+      }).select('id').single();
+      if (!error && inserted?.id) {
+        await supabase.from('prompt_history').insert({
+          prompt_id: inserted.id,
+          content: latestContent,
+          version_name: ''
+        });
+        await reloadPrompts();
+        showToast(`Prompt duplicated as "${newName}"`);
+      }
     };
-
-    savePrompts([newPrompt, ...prompts]);
-    showToast(`Prompt duplicated as "${newName}"`);
-  }, [prompts, savePrompts, showToast]);
+    run();
+  }, [prompts, supabase, reloadPrompts, showToast, userId]);
 
   const trashPrompt = useCallback((id: string) => {
-    const newPrompts = prompts.map(p =>
-      p.id === id ? { ...p, trashed: true, trashedAt: new Date().toISOString() } : p
-    );
-    savePrompts(newPrompts);
-    resetForm();
-    showToast('Prompt moved to trash');
-  }, [prompts, savePrompts, resetForm, showToast]);
+    const run = async () => {
+      await supabase.from('prompts').update({
+        trashed: true,
+        trashed_at: new Date().toISOString()
+      }).eq('id', id);
+      await reloadPrompts();
+      resetForm();
+      showToast('Prompt moved to trash');
+    };
+    run();
+  }, [supabase, reloadPrompts, resetForm, showToast]);
 
   const recoverPrompt = useCallback((id: string) => {
-    const newPrompts = prompts.map(p => {
-      if (p.id === id) {
-        const { trashedAt, ...rest } = p;
-        return { ...rest, trashed: false, updatedAt: new Date().toISOString() };
-      }
-      return p;
-    });
-    savePrompts(newPrompts);
-    showToast('Prompt recovered');
-  }, [prompts, savePrompts, showToast]);
+    const run = async () => {
+      await supabase.from('prompts').update({
+        trashed: false,
+        trashed_at: null
+      }).eq('id', id);
+      await reloadPrompts();
+      showToast('Prompt recovered');
+    };
+    run();
+  }, [supabase, reloadPrompts, showToast]);
 
   const permanentlyDeletePrompt = useCallback((id: string) => {
-    const newPrompts = prompts.filter(p => p.id !== id);
-    savePrompts(newPrompts);
-    showToast('Prompt permanently deleted');
-  }, [prompts, savePrompts, showToast]);
+    const run = async () => {
+      await supabase.from('prompts').delete().eq('id', id);
+      await reloadPrompts();
+      showToast('Prompt permanently deleted');
+    };
+    run();
+  }, [supabase, reloadPrompts, showToast]);
 
   const addGlobalTemplate = useCallback(() => {
     if (!newTemplateKey.trim() || !newTemplateValue.trim()) {
@@ -310,20 +332,35 @@ export default function PromptLibrary({ userEmail }: Props) {
       showToast('Template keyword already exists', 'error');
       return;
     }
-    const newTemplates = { ...globalTemplates, [newTemplateKey]: newTemplateValue };
-    setGlobalTemplates(newTemplates);
-    localStorage.setItem('globalTemplates', JSON.stringify(newTemplates));
-    setNewTemplateKey('');
-    setNewTemplateValue('');
-    showToast('Global template added successfully');
-  }, [newTemplateKey, newTemplateValue, globalTemplates, showToast]);
+    if (!userId) {
+      showToast('User not loaded', 'error');
+      return;
+    }
+    const run = async () => {
+      await supabase.from('global_templates').insert({
+        key: newTemplateKey,
+        value: newTemplateValue,
+        is_public: shareWithTeam,
+        user_id: userId
+      });
+      const newTemplates = { ...globalTemplates, [newTemplateKey]: newTemplateValue };
+      setGlobalTemplates(newTemplates);
+      setNewTemplateKey('');
+      setNewTemplateValue('');
+      showToast('Global template added successfully');
+    };
+    run();
+  }, [newTemplateKey, newTemplateValue, globalTemplates, showToast, supabase, userId, shareWithTeam]);
 
   const deleteGlobalTemplate = useCallback((key: string) => {
-    const { [key]: _, ...rest } = globalTemplates;
-    setGlobalTemplates(rest);
-    localStorage.setItem('globalTemplates', JSON.stringify(rest));
-    showToast('Global template deleted');
-  }, [globalTemplates, showToast]);
+    const run = async () => {
+      await supabase.from('global_templates').delete().eq('key', key);
+      const { [key]: _, ...rest } = globalTemplates;
+      setGlobalTemplates(rest);
+      showToast('Global template deleted');
+    };
+    run();
+  }, [globalTemplates, showToast, supabase]);
 
   const exportLibrary = useCallback(() => {
     const activePrompts = prompts.filter(p => !p.trashed);
@@ -570,6 +607,11 @@ export default function PromptLibrary({ userEmail }: Props) {
                 onClick={() => loadPromptForEditing(prompt.id)}
               >
                 <h3 className="font-medium text-gray-800 dark:text-gray-100 truncate">{prompt.name}</h3>
+                <div className="flex items-center text-xs text-gray-500 dark:text-gray-300 gap-2 mt-1">
+                  <span className={`px-2 py-0.5 rounded-full ${prompt.isPublic === false ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-200' : 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200'}`}>
+                    {prompt.isPublic === false ? 'Private' : 'Shared'}
+                  </span>
+                </div>
                 {prompt.tags && prompt.tags.length > 0 && (
                   <div className="mt-1 flex flex-wrap gap-1">
                     {prompt.tags.map((tag, i) => (
@@ -695,6 +737,9 @@ export default function PromptLibrary({ userEmail }: Props) {
 
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-6">
+        {loading && (
+          <div className="text-gray-600 dark:text-gray-300 mb-4">Loading prompts…</div>
+        )}
         <div className="flex items-center justify-end gap-3 mb-4">
           {userEmail && (
             <div className="text-sm text-gray-600 dark:text-gray-300">
@@ -770,6 +815,23 @@ export default function PromptLibrary({ userEmail }: Props) {
                   onChange={(e) => setPromptCategory(e.target.value)}
                   className="w-full border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Share with Liatrio team</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Default is shared; turn off to keep private.</p>
+                </div>
+                <label className="inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={shareWithTeam}
+                    onChange={(e) => setShareWithTeam(e.target.checked)}
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:bg-blue-600 relative transition">
+                    <span className="absolute top-[2px] left-[2px] peer-checked:translate-x-5 w-5 h-5 bg-white rounded-full shadow transform transition"></span>
+                  </div>
+                </label>
               </div>
 
               <div className="mb-4">

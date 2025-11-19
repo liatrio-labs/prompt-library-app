@@ -15,6 +15,8 @@ export interface Prompt {
   updatedAt: string;
   trashed: boolean;
   trashedAt?: string;
+  isPublic?: boolean;
+  userId?: string;
 }
 
 export interface GlobalTemplates {
